@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .card {
+    @apply bg-secondaryBg shadow-card rounded-card p-4 mb-4;
+  }
+  .card-header {
+    @apply text-xl font-quicksand text-accentBlue mb-2;
+  }
+  .card-subheader {
+    @apply text-accentBrown font-quicksand mb-4;
+  }
+  .progress-bar {
+    @apply h-progress-bar-height bg-accentBrown rounded w-full;
+  }
+  .progress-bar-inner {
+    @apply bg-accentBlue h-full transition-all ease-in-out;
+  }
+  .button {
+    @apply bg-accentBlue text-white py-3 px-6 rounded-card font-quicksand font-bold text-lg;
+  }
+  .button:hover {
+    background-color: #5a7684; /* Puedes personalizar colores no utilitarios aquí */
+  }
+}
+
+ActionBar {
+  background-color: var(--secondaryBg);
+  color: white;
+}

@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>3D-MOT</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #000;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Div para mensajes si lo deseas -->
+    <div
+      id="mensaje"
+      style="position: absolute; top: 10px; left: 10px; color: #fff"
+    ></div>
+
+    <!-- THREE.js desde CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
+
+    <script>
+      // Lógica 3D-MOT: crear escena, esferas, etc...
+      // Al final, cuando determinemos éxito o fallo, enviamos mensaje:
+      // --- Variables globales ---
+      let scene, camera, renderer;
+      const spheres = [];
+      const RED_INDICES = []; // Índices de las bolas que son rojas
+      let canClick = false; // Controla si el usuario puede hacer clic
+      let fails = 0; // Fallos acumulados
+      let successes = 0; // Éxitos acumulados
+      const MAX_FAILS = 3; // Límite máximo de fallos
+
+      // Para detección de clic
+      const raycaster = new THREE.Raycaster();
+      const mouse = new THREE.Vector2();
+
+      // --- Crear la escena ---
+      initScene();
+      animate();
+
+      // 1. Escena, cámara, renderizador
+      function initScene() {
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x000000);
+
+        camera = new THREE.PerspectiveCamera(
+          75,
+          window.innerWidth / window.innerHeight,
+          0.1,
+          1000
+        );
+        camera.position.z = 30;
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // 2. Luz
+        const light = new THREE.PointLight(0xffffff, 1);
+        light.position.set(10, 15, 15);
+        scene.add(light);
+
+        // 3. Generar las 8 esferas
+        createSpheres(8);
+
+        // 4. Seleccionar aleatoriamente 4 de ellas para ser rojas
+        chooseRedTargets(4);
+
+        // 5. Mostrar rojas durante 1 segundo, luego iniciar el movimiento
+        setTimeout(() => {
+          restoreColor();
+          startMotion(8); // 8 segundos de movimiento
+        }, 2000);
+
+        // Listener para redimensionar la ventana
+        window.addEventListener('resize', onWindowResize);
+
+        // Listener para clic
+        window.addEventListener('click', onMouseClick);
+      }
+
+      // Crear esferas en posiciones y velocidades aleatorias
+      function createSpheres(num) {
+        const geometry = new THREE.SphereGeometry(1, 32, 32);
+        for (let i = 0; i < num; i++) {
+          const material = new THREE.MeshPhongMaterial({ color: 0xffff00 });
+          const sphere = new THREE.Mesh(geometry, material);
+
+          sphere.position.set(
+            (Math.random() - 0.5) * 20,
+            (Math.random() - 0.5) * 20,
+            (Math.random() - 0.5) * 20
+          );
+
+          // Velocidades iniciales muy suaves, se pueden ajustar
+          sphere.userData.velocity = new THREE.Vector3(
+            (Math.random() - 0.5) * 0.2,
+            (Math.random() - 0.5) * 0.2,
+            (Math.random() - 0.5) * 0.2
+          );
+
+          sphere.userData.isRed = false; // Para saber si es objetivo
+          sphere.userData.isMoving = false; // Control de movimiento activo/inactivo
+
+          scene.add(sphere);
+          spheres.push(sphere);
+        }
+      }
+
+      // Escoger al azar "count" esferas para ser rojas
+      function chooseRedTargets(count) {
+        while (RED_INDICES.length < count) {
+          let randIndex = Math.floor(Math.random() * spheres.length);
+          if (!RED_INDICES.includes(randIndex)) {
+            RED_INDICES.push(randIndex);
+            spheres[randIndex].material.color.set(0xff0000);
+            spheres[randIndex].userData.isRed = true;
+          }
+        }
+      }
+
+      // Devolver el color amarillo al resto
+      function restoreColor() {
+        RED_INDICES.forEach((index) => {
+          spheres[index].material.color.set(0xffff00);
+        });
+      }
+
+      // Iniciar el movimiento durante X segundos
+      function startMotion(seconds) {
+        // Activamos el movimiento de cada esfera
+        spheres.forEach((s) => (s.userData.isMoving = true));
+
+        setTimeout(() => {
+          // Tras 'seconds' detener el movimiento
+          spheres.forEach((s) => (s.userData.isMoving = false));
+
+          // Asegurarnos de separar las bolas si están demasiado juntas
+          separateSpheres();
+
+          // Ahora el usuario puede hacer clic para adivinar
+          canClick = true;
+        }, seconds * 1000);
+      }
+
+      // Evita que las esferas queden muy cerca tras parar
+      function separateSpheres() {
+        const minDist = 3; // distancia mínima para "hacer clic" cómodamente
+        let overlapping = true;
+        // Repetir mientras haya solapamientos
+        while (overlapping) {
+          overlapping = false;
+          for (let i = 0; i < spheres.length; i++) {
+            for (let j = i + 1; j < spheres.length; j++) {
+              const dist = spheres[i].position.distanceTo(spheres[j].position);
+              if (dist < minDist) {
+                overlapping = true;
+                // Mover una de las esferas un poco
+                const direction = new THREE.Vector3()
+                  .subVectors(spheres[i].position, spheres[j].position)
+                  .normalize();
+                // Separar la esfera i un poco en la dirección contraria
+                spheres[i].position.add(direction.multiplyScalar(0.5));
+              }
+            }
+          }
+        }
+      }
+
+      // Animar (render loop)
+      function animate() {
+        requestAnimationFrame(animate);
+
+        // Mover las esferas si isMoving = true
+        spheres.forEach((s) => {
+          if (s.userData.isMoving) {
+            s.position.add(s.userData.velocity);
+
+            // Rebote en caja invisible
+            ['x', 'y', 'z'].forEach((axis) => {
+              if (s.position[axis] > 10 || s.position[axis] < -10) {
+                s.userData.velocity[axis] *= -1;
+              }
+            });
+          }
+        });
+
+        renderer.render(scene, camera);
+      }
+
+      // Ajustar el tamaño al cambiar la ventana
+      function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      }
+
+      // Evento de clic: detectar intersección con las esferas
+      function onMouseClick(event) {
+        if (!canClick) return;
+
+        // Coordenadas de mouse en espacio normalizado [-1,1]
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(spheres);
+
+        if (intersects.length > 0) {
+          // La intersección más cercana
+          const clickedSphere = intersects[0].object;
+          if (clickedSphere.userData.isRed) {
+            successes++;
+            // La volvemos verde para indicar acierto
+            clickedSphere.material.color.set(0x00ff00);
+          } else {
+            fails++;
+            vibrateSphere(clickedSphere);
+          }
+
+          checkEndCondition();
+        }
+      }
+
+      // Vibración simple de la esfera para indicar error
+      function vibrateSphere(sphere) {
+        // Animación breve: movemos la esfera un poco de un lado a otro
+        const originalPos = sphere.position.clone();
+        const amplitude = 0.2;
+        const duration = 300; // ms
+        const steps = 10;
+        let currentStep = 0;
+        const interval = setInterval(() => {
+          const offset = currentStep % 2 === 0 ? amplitude : -amplitude;
+          sphere.position.x = originalPos.x + offset;
+          currentStep++;
+          if (currentStep > steps) {
+            clearInterval(interval);
+            sphere.position.copy(originalPos);
+          }
+        }, duration / steps);
+      }
+
+      // Verificar si termina la partida
+      function checkEndCondition() {
+        // Si fallamos 3 veces, sale mensaje de fracaso
+        if (fails >= MAX_FAILS) {
+          sendToNative('Esta vez no lo has conseguido');
+          canClick = false;
+        }
+        // Si acertamos tantas como bolas rojas, se entiende que ya clicamos todas
+        else if (successes === RED_INDICES.length) {
+          sendToNative('¡Enhorabuena!');
+          canClick = false;
+        }
+      }
+
+      function sendToNative(msg) {
+        // Revisar compatibilidad con NativeScript-React:
+        if (window && window.nsWebViewInterface) {
+          // nativo de NativeScript WebView con plugin
+          window.nsWebViewInterface.emit(msg);
+        } else if (window && window.ReactNativeWebView) {
+          // React Native WebView
+          window.ReactNativeWebView.postMessage(msg);
+        } else {
+          console.log('No se encontró integración postMessage. Mensaje:', msg);
+        }
+      }
+
+      // Ejemplo: si el jugador acierta
+      function onSuccess() {
+        sendToNative('SUCCESS');
+        // mostrar algo en el HTML...
+      }
+
+      // Ejemplo: si el jugador falla
+      function onFail() {
+        sendToNative('FAIL');
+      }
+    </script>
+  </body>
+</html>
