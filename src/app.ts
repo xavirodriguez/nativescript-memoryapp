@@ -2,6 +2,7 @@ import * as React from 'react';
 import * as ReactNativeScript from 'react-nativescript';
 import { MainStack } from './navigation/MainStack';
 import { Trace } from '@nativescript/core';
+import '@/utils/registerWebView';
 
 Trace.setCategories(Trace.categories.Debug);
 Trace.enable();
