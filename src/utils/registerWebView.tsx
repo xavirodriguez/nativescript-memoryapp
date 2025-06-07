@@ -1,4 +1,5 @@
 import { registerElement } from 'react-nativescript';
 import { WebView } from '@nativescript/core';
 
-//egisterElement('webView', () => WebView);
+// Register the NativeScript WebView element so it can be used in JSX.
+registerElement('webView', () => WebView);
